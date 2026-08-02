@@ -1,0 +1,6 @@
+{
+  "/api/login":    { "limit": 5,   "windowSeconds": 60 },
+  "/api/search":   { "limit": 100, "windowSeconds": 60 },
+  "/api/payment":  { "limit": 20,  "windowSeconds": 60 },
+  "/api/products": { "limit": 50,  "windowSeconds": 60 }
+}

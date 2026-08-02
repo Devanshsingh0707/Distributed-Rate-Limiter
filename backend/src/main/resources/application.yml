@@ -1,0 +1,17 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: rate-limiter
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000 # connection timeout in ms — keeps Redis failure detection fast
+
+# Rate limiter behaviour
+rate-limiter:
+  # open  → allow requests through when Redis is unreachable (availability first)
+  # closed → block requests with 503 when Redis is unreachable (correctness first)
+  fail-mode: open
