@@ -4,6 +4,7 @@ import com.ratelimiter.limiter.RateLimiter;
 import com.ratelimiter.model.RouteLimitConfig;
 import com.ratelimiter.model.RouteLimitConfigRegistry;
 import com.ratelimiter.service.ActiveAlgorithmHolder;
+import com.ratelimiter.service.RedisSimulator;
 import com.ratelimiter.service.StatsTracker;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -260,7 +261,7 @@ public class StatsController {
             long latency = System.currentTimeMillis() - startTime;
 
             if (redisError) {
-                if ("open".equalsIgnoreCase(failMode)) {
+                if ("open".equalsIgnoreCase(redisSimulator.getFailMode())) {
                     allowed++;
                     statsTracker.record(request.getClientId(), request.getRoute(), true, 200, latency);
                 } else {
