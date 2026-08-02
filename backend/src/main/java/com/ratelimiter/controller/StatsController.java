@@ -23,18 +23,18 @@ public class StatsController {
     private final StatsTracker statsTracker;
     private final RouteLimitConfigRegistry configRegistry;
     private final StringRedisTemplate redisTemplate;
-
-    @Value("${rate-limiter.fail-mode:open}")
-    private String failMode;
+    private final RedisSimulator redisSimulator;
 
     public StatsController(ActiveAlgorithmHolder algorithmHolder,
                            StatsTracker statsTracker,
                            RouteLimitConfigRegistry configRegistry,
-                           StringRedisTemplate redisTemplate) {
+                           StringRedisTemplate redisTemplate,
+                           RedisSimulator redisSimulator) {
         this.algorithmHolder = algorithmHolder;
         this.statsTracker = statsTracker;
         this.configRegistry = configRegistry;
         this.redisTemplate = redisTemplate;
+        this.redisSimulator = redisSimulator;
     }
 
     @PostMapping("/algorithm")
@@ -89,7 +89,6 @@ public class StatsController {
     /**
      * Returns Redis connectivity, the configured fail-mode, and how many requests
      * have bypassed rate limiting due to Redis being unreachable (fail-open only).
-     * Use this to verify the limiter is guarding traffic and spot outage impact.
      */
     @GetMapping("/redis-status")
     public ResponseEntity<Map<String, Object>> redisStatus() {
@@ -102,9 +101,10 @@ public class StatsController {
         }
         long bypass = statsTracker.getSummary().getFailedBypassCount();
         return ResponseEntity.ok(Map.of(
-            "redisConnected",    connected,
-            "failMode",         failMode,
+            "redisConnected",    connected && !redisSimulator.isSimulatingDown(),
+            "failMode",         redisSimulator.getFailMode(),
             "failedBypassCount", bypass,
+            "simulatingDown",    redisSimulator.isSimulatingDown(),
             "note", bypass > 0
                 ? bypass + " request(s) bypassed the limiter because Redis was unreachable"
                 : "No bypass events recorded"
@@ -121,7 +121,118 @@ public class StatsController {
         } catch (Exception e) {
             connected = false;
         }
-        return ResponseEntity.ok(Map.of("redisConnected", connected));
+        return ResponseEntity.ok(Map.of("redisConnected", connected && !redisSimulator.isSimulatingDown()));
+    }
+
+    @PostMapping("/redis-simulation")
+    public ResponseEntity<Map<String, Boolean>> setRedisSimulation(@RequestBody Map<String, Boolean> request) {
+        Boolean simulatingDown = request.get("simulatingDown");
+        if (simulatingDown == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        redisSimulator.setSimulatingDown(simulatingDown);
+        return ResponseEntity.ok(Map.of("simulatingDown", redisSimulator.isSimulatingDown()));
+    }
+
+    @PostMapping("/fail-mode")
+    public ResponseEntity<Map<String, String>> setFailMode(@RequestBody Map<String, String> request) {
+        String failMode = request.get("failMode");
+        if (failMode == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "failMode is required"));
+        }
+        try {
+            redisSimulator.setFailMode(failMode);
+            return ResponseEntity.ok(Map.of("failMode", redisSimulator.getFailMode()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/load-test")
+    public ResponseEntity<Map<String, Object>> runLoadTest(jakarta.servlet.http.HttpServletRequest httpRequest,
+                                                           @RequestBody Map<String, Object> body) {
+        int requests = ((Number) body.getOrDefault("requests", 1000)).intValue();
+        int concurrency = ((Number) body.getOrDefault("concurrency", 20)).intValue();
+        String targetRoute = (String) body.getOrDefault("endpoint", "/api/search");
+        
+        int port = httpRequest.getLocalPort();
+        String targetUrl = "http://localhost:" + port + targetRoute;
+        
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(2))
+                    .build();
+
+            java.util.concurrent.atomic.LongAdder allowed = new java.util.concurrent.atomic.LongAdder();
+            java.util.concurrent.atomic.LongAdder blocked = new java.util.concurrent.atomic.LongAdder();
+            java.util.concurrent.atomic.LongAdder errors = new java.util.concurrent.atomic.LongAdder();
+            java.util.List<Long> latencies = java.util.Collections.synchronizedList(new java.util.ArrayList<>(requests));
+
+            java.util.List<java.util.concurrent.Callable<Void>> tasks = new java.util.ArrayList<>(requests);
+            for (int i = 0; i < requests; i++) {
+                tasks.add(() -> {
+                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                            .uri(java.net.URI.create(targetUrl))
+                            .header("X-Client-Id", "dashboard-load-test")
+                            .GET()
+                            .timeout(java.time.Duration.ofSeconds(5))
+                            .build();
+                    long t0 = System.currentTimeMillis();
+                    try {
+                        java.net.http.HttpResponse<Void> resp = client.send(req, java.net.http.HttpResponse.BodyHandlers.discarding());
+                        long latency = System.currentTimeMillis() - t0;
+                        latencies.add(latency);
+                        if (resp.statusCode() == 200) {
+                            allowed.increment();
+                        } else if (resp.statusCode() == 429) {
+                            blocked.increment();
+                        } else {
+                            errors.increment();
+                        }
+                    } catch (Exception e) {
+                        latencies.add(System.currentTimeMillis() - t0);
+                        errors.increment();
+                    }
+                    return null;
+                });
+            }
+
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(concurrency);
+            long wallStart = System.currentTimeMillis();
+            java.util.List<java.util.concurrent.Future<Void>> futures = pool.invokeAll(tasks);
+            for (java.util.concurrent.Future<Void> f : futures) {
+                try { f.get(); } catch (Exception ignored) {}
+            }
+            pool.shutdown();
+            pool.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS);
+            long wallTime = System.currentTimeMillis() - wallStart;
+
+            java.util.List<Long> sorted = new java.util.ArrayList<>(latencies);
+            java.util.Collections.sort(sorted);
+            long p50 = percentile(sorted, 50);
+            long p99 = percentile(sorted, 99);
+            long max = sorted.isEmpty() ? 0 : sorted.get(sorted.size() - 1);
+
+            return ResponseEntity.ok(Map.of(
+                "totalSent", requests,
+                "allowed", allowed.sum(),
+                "blocked", blocked.sum(),
+                "errors", errors.sum(),
+                "p50", p50,
+                "p99", p99,
+                "max", max,
+                "wallTimeMs", wallTime,
+                "url", targetUrl
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private static long percentile(java.util.List<Long> sorted, int pct) {
+        if (sorted.isEmpty()) return 0;
+        int idx = (int) Math.ceil(pct / 100.0 * sorted.size()) - 1;
+        return sorted.get(Math.max(0, Math.min(idx, sorted.size() - 1)));
     }
 
     @PostMapping("/stress")

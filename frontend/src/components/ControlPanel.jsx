@@ -28,7 +28,13 @@ export default function ControlPanel({
   setCount,
   onSend,
   onReset,
-  loading
+  loading,
+  simulatingDown,
+  onRedisSimulationToggle,
+  failMode,
+  onFailModeChange,
+  onRunLoadTest,
+  loadTestRunning
 }) {
   return (
     <div className="control-panel">
@@ -121,16 +127,70 @@ export default function ControlPanel({
         <button
           className="btn btn-primary"
           onClick={onSend}
-          disabled={loading}
+          disabled={loading || loadTestRunning}
         >
           {loading ? 'Sending...' : 'Send Requests'}
         </button>
         <button
           className="btn btn-secondary"
           onClick={onReset}
-          disabled={loading}
+          disabled={loading || loadTestRunning}
         >
           Reset Statistics
+        </button>
+      </div>
+
+      <hr className="divider" />
+
+      {/* 5. Failure Mode - Simulate Redis Outage */}
+      <div className="panel-section">
+        <label className="section-label">Failure Mode - Simulate Redis Outage</label>
+        <button
+          className={`btn-outage ${simulatingDown ? 'outage-active' : 'outage-inactive'}`}
+          onClick={onRedisSimulationToggle}
+          disabled={loading || loadTestRunning}
+        >
+          {simulatingDown ? 'Redis: DOWN (click to restore)' : 'Redis: UP (click to kill)'}
+        </button>
+        
+        {simulatingDown && (
+          <div className="fail-mode-sub">
+            <div className="fail-mode-toggles">
+              <button
+                className={`btn-toggle ${failMode === 'closed' ? 'toggle-active' : ''}`}
+                onClick={() => onFailModeChange('closed')}
+                disabled={loading || loadTestRunning}
+              >
+                fail closed (block all)
+              </button>
+              <button
+                className={`btn-toggle ${failMode === 'open' ? 'toggle-active' : ''}`}
+                onClick={() => onFailModeChange('open')}
+                disabled={loading || loadTestRunning}
+              >
+                fail open (allow all)
+              </button>
+            </div>
+            <p className="outage-note">
+              {failMode === 'closed' 
+                ? 'Safe default: with no shared state to check, every request is rejected until Redis is reachable again.'
+                : 'Availability first: requests bypass the rate limit checks and are allowed through while Redis is down.'}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <hr className="divider" />
+
+      {/* 6. Load Test */}
+      <div className="panel-section">
+        <label className="section-label">Load Test</label>
+        <button
+          className="btn btn-run-loadtest"
+          onClick={onRunLoadTest}
+          disabled={loading || loadTestRunning}
+        >
+          {loadTestRunning ? 'Running Load Test...' : 'Run Load Test (1,000 req)'}
         </button>
       </div>
     </div>

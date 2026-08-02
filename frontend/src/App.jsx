@@ -17,12 +17,19 @@ export default function App() {
     blocked: 0,
     totalRequests: 0,
     currentRPS: 0.0,
-    avgLatencyMs: 0.0
+    avgLatencyMs: 0.0,
+    failedBypassCount: 0
   });
   const [feed, setFeed] = useState([]);
   const [chartData, setChartData] = useState([]);
   const [redisConnected, setRedisConnected] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // Simulation & Load Test States
+  const [simulatingDown, setSimulatingDown] = useState(false);
+  const [failMode, setFailMode] = useState('open');
+  const [loadTestRunning, setLoadTestRunning] = useState(false);
+  const [loadTestResults, setLoadTestResults] = useState(null);
 
   // References to keep track of accumulated sums for delta calculations
   const lastAllowedRef = useRef(0);
@@ -45,12 +52,14 @@ export default function App() {
     lastBlockedRef.current = 0;
   }, [port]);
 
-  // 2. Fetch data (summary, feed, health) helper
+  // 2. Fetch data (summary, feed, status) helper
   const fetchData = async () => {
     try {
-      // Check health (Redis connection status)
-      const health = await api.checkHealth(port);
-      setRedisConnected(health.redisConnected);
+      // Check health & outage simulation state
+      const statusData = await api.getRedisStatus(port);
+      setRedisConnected(statusData.redisConnected);
+      setSimulatingDown(statusData.simulatingDown);
+      setFailMode(statusData.failMode);
 
       // Get metrics summary
       const sumData = await api.getSummary(port);
@@ -150,6 +159,54 @@ export default function App() {
     }
   };
 
+  // 7. Handle Redis Outage Simulation Toggle
+  const handleRedisSimulationToggle = async () => {
+    const nextState = !simulatingDown;
+    setLoading(true);
+    try {
+      await api.setRedisSimulation(port, nextState);
+      setSimulatingDown(nextState);
+      await fetchData();
+    } catch (err) {
+      alert(`Failed to toggle Redis simulation on port :${port}: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 8. Handle Fail Mode Change
+  const handleFailModeChange = async (newMode) => {
+    setLoading(true);
+    try {
+      await api.setFailMode(port, newMode);
+      setFailMode(newMode);
+      await fetchData();
+    } catch (err) {
+      alert(`Failed to set fail mode on port :${port}: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 9. Handle Running Load Test (1000 requests)
+  const handleRunLoadTest = async () => {
+    setLoadTestRunning(true);
+    setLoadTestResults(null);
+    try {
+      const results = await api.runLoadTest(port, {
+        endpoint: route,
+        requests: 1000,
+        concurrency: 20
+      });
+      setLoadTestResults(results);
+      await fetchData();
+    } catch (err) {
+      alert(`Failed to run load test on port :${port}: ${err.message}`);
+    } finally {
+      setLoadTestRunning(false);
+    }
+  };
+
   return (
     <div className="app-container">
       {/* HEADER SECTION */}
@@ -176,7 +233,7 @@ export default function App() {
           <div className="card">
             <div className="card-title">
               <span>Traffic & Config Controls</span>
-              {loading && <span className="pulse-traffic"></span>}
+              {(loading || loadTestRunning) && <span className="pulse-traffic"></span>}
             </div>
             <ControlPanel
               port={port}
@@ -192,12 +249,62 @@ export default function App() {
               onSend={handleSendRequests}
               onReset={handleReset}
               loading={loading}
+              simulatingDown={simulatingDown}
+              onRedisSimulationToggle={handleRedisSimulationToggle}
+              failMode={failMode}
+              onFailModeChange={handleFailModeChange}
+              onRunLoadTest={handleRunLoadTest}
+              loadTestRunning={loadTestRunning}
             />
           </div>
         </div>
 
         {/* Right Side: Monitoring Data */}
         <div className="grid-right" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Load Test Results if available */}
+          {loadTestResults && (
+            <div className="card" style={{ borderColor: 'var(--color-warning)' }}>
+              <div className="card-title" style={{ color: 'var(--color-warning)', borderBottomColor: 'var(--color-warning)' }}>
+                <span>Load Test Results (1,000 requests)</span>
+                <button
+                  className="btn btn-secondary font-12"
+                  style={{ padding: '2px 8px' }}
+                  onClick={() => setLoadTestResults(null)}
+                >
+                  Clear Results
+                </button>
+              </div>
+              <div className="loadtest-results-container">
+                <div className="loadtest-grid">
+                  <div className="loadtest-stat">
+                    <span className="loadtest-stat-label">Allowed</span>
+                    <span className="loadtest-stat-value text-allowed">{loadTestResults.allowed}</span>
+                  </div>
+                  <div className="loadtest-stat">
+                    <span className="loadtest-stat-label">Blocked (429)</span>
+                    <span className="loadtest-stat-value text-blocked">{loadTestResults.blocked}</span>
+                  </div>
+                  <div className="loadtest-stat">
+                    <span className="loadtest-stat-label">Errors</span>
+                    <span className="loadtest-stat-value text-warning">{loadTestResults.errors}</span>
+                  </div>
+                  <div className="loadtest-stat">
+                    <span className="loadtest-stat-label">Total Duration</span>
+                    <span className="loadtest-stat-value text-total">{loadTestResults.wallTimeMs} ms</span>
+                  </div>
+                  <div className="loadtest-stat">
+                    <span className="loadtest-stat-label">p50 Latency</span>
+                    <span className="loadtest-stat-value text-rps">{loadTestResults.p50} ms</span>
+                  </div>
+                  <div className="loadtest-stat">
+                    <span className="loadtest-stat-label">p99 Latency</span>
+                    <span className="loadtest-stat-value text-latency">{loadTestResults.p99} ms</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Live Metrics Grid */}
           <LiveStats summary={summary} />
 

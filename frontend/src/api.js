@@ -80,5 +80,41 @@ export const api = {
         error: e.message
       };
     }
+  },
+
+  async getRedisStatus(port) {
+    const res = await fetch(`${getBaseUrl(port)}/stats/redis-status`);
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return res.json();
+  },
+
+  async setRedisSimulation(port, simulatingDown) {
+    const res = await fetch(`${getBaseUrl(port)}/stats/redis-simulation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ simulatingDown })
+    });
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return res.json();
+  },
+
+  async setFailMode(port, failMode) {
+    const res = await fetch(`${getBaseUrl(port)}/stats/fail-mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ failMode })
+    });
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return res.json();
+  },
+
+  async runLoadTest(port, { endpoint, requests, concurrency }) {
+    const res = await fetch(`${getBaseUrl(port)}/stats/load-test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint, requests, concurrency })
+    });
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    return res.json();
   }
 };

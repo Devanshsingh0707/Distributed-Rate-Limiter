@@ -28,9 +28,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final StatsTracker statsTracker;
     private final RedisSimulator redisSimulator;
 
-    @Value("${rate-limiter.fail-mode:open}")
-    private String failMode;
-
     public RateLimitFilter(ActiveAlgorithmHolder algorithmHolder,
                            RouteLimitConfigRegistry configRegistry,
                            StatsTracker statsTracker,
@@ -93,7 +90,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         long latency = System.currentTimeMillis() - startTime;
 
         if (redisErrorOccurred) {
-            if ("open".equalsIgnoreCase(failMode)) {
+            if ("open".equalsIgnoreCase(redisSimulator.getFailMode())) {
                 // Fail-open: allow request, but track it as a bypass so the outage is observable
                 log.warn("[fail-open] Redis unreachable — allowing request to {} without rate-limit check", path);
                 filterChain.doFilter(request, response);
