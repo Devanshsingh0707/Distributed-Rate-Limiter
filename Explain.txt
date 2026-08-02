@@ -1,0 +1,3 @@
+the project will not work locally as somethings are changed
+1. Redis Url 
+2. vite api url -> localhost 
