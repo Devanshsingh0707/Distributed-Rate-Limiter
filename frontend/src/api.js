@@ -1,4 +1,14 @@
-const getBaseUrl = (port) => `http://localhost:${port}`;
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+
+const getBaseUrl = (port) => {
+  if (API_BASE_URL) {
+    // In production/deployment, default port 8080 uses the environment variable
+    if (port === 8080) {
+      return API_BASE_URL;
+    }
+  }
+  return `http://localhost:${port}`;
+};
 
 export const api = {
   async getAlgorithm(port) {

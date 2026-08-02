@@ -261,50 +261,6 @@ export default function App() {
 
         {/* Right Side: Monitoring Data */}
         <div className="grid-right" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Load Test Results if available */}
-          {loadTestResults && (
-            <div className="card" style={{ borderColor: 'var(--color-warning)' }}>
-              <div className="card-title" style={{ color: 'var(--color-warning)', borderBottomColor: 'var(--color-warning)' }}>
-                <span>Load Test Results (1,000 requests)</span>
-                <button
-                  className="btn btn-secondary font-12"
-                  style={{ padding: '2px 8px' }}
-                  onClick={() => setLoadTestResults(null)}
-                >
-                  Clear Results
-                </button>
-              </div>
-              <div className="loadtest-results-container">
-                <div className="loadtest-grid">
-                  <div className="loadtest-stat">
-                    <span className="loadtest-stat-label">Allowed</span>
-                    <span className="loadtest-stat-value text-allowed">{loadTestResults.allowed}</span>
-                  </div>
-                  <div className="loadtest-stat">
-                    <span className="loadtest-stat-label">Blocked (429)</span>
-                    <span className="loadtest-stat-value text-blocked">{loadTestResults.blocked}</span>
-                  </div>
-                  <div className="loadtest-stat">
-                    <span className="loadtest-stat-label">Errors</span>
-                    <span className="loadtest-stat-value text-warning">{loadTestResults.errors}</span>
-                  </div>
-                  <div className="loadtest-stat">
-                    <span className="loadtest-stat-label">Total Duration</span>
-                    <span className="loadtest-stat-value text-total">{loadTestResults.wallTimeMs} ms</span>
-                  </div>
-                  <div className="loadtest-stat">
-                    <span className="loadtest-stat-label">p50 Latency</span>
-                    <span className="loadtest-stat-value text-rps">{loadTestResults.p50} ms</span>
-                  </div>
-                  <div className="loadtest-stat">
-                    <span className="loadtest-stat-label">p99 Latency</span>
-                    <span className="loadtest-stat-value text-latency">{loadTestResults.p99} ms</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Live Metrics Grid */}
           <LiveStats summary={summary} />
 
@@ -321,6 +277,52 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* Load Test Results Modal Overlay */}
+      {loadTestResults && (
+        <div className="modal-overlay">
+          <div className="card loadtest-modal-card" style={{ borderColor: 'var(--color-warning)' }}>
+            <div className="card-title" style={{ color: 'var(--color-warning)', borderBottomColor: 'var(--color-warning)' }}>
+              <span>Load Test Results (1,000 requests)</span>
+              <button
+                className="btn btn-secondary font-12"
+                style={{ padding: '2px 8px' }}
+                onClick={() => setLoadTestResults(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="loadtest-results-container">
+              <div className="loadtest-grid">
+                <div className="loadtest-stat">
+                  <span className="loadtest-stat-label">Allowed</span>
+                  <span className="loadtest-stat-value text-allowed">{loadTestResults.allowed}</span>
+                </div>
+                <div className="loadtest-stat">
+                  <span className="loadtest-stat-label">Blocked (429)</span>
+                  <span className="loadtest-stat-value text-blocked">{loadTestResults.blocked}</span>
+                </div>
+                <div className="loadtest-stat">
+                  <span className="loadtest-stat-label">Errors</span>
+                  <span className="loadtest-stat-value text-warning">{loadTestResults.errors}</span>
+                </div>
+                <div className="loadtest-stat">
+                  <span className="loadtest-stat-label">Total Duration</span>
+                  <span className="loadtest-stat-value text-total">{loadTestResults.wallTimeMs} ms</span>
+                </div>
+                <div className="loadtest-stat">
+                  <span className="loadtest-stat-label">p50 Latency</span>
+                  <span className="loadtest-stat-value text-rps">{loadTestResults.p50} ms</span>
+                </div>
+                <div className="loadtest-stat">
+                  <span className="loadtest-stat-label">p99 Latency</span>
+                  <span className="loadtest-stat-value text-latency">{loadTestResults.p99} ms</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
